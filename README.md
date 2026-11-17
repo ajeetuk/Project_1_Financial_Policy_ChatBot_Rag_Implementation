@@ -256,11 +256,12 @@ Follow these steps in order. Each step is numbered so you can follow along with 
 ```mermaid
 flowchart LR
     S1["1. Clone"] --> S2["2. Set up + run locally"]
-    S2 --> S3["3. Create Azure Web App"]
-    S3 --> S4["4-6. Configure: key, startup, web sockets"]
-    S4 --> S7["7. Connect GitHub"]
-    S7 --> S8["8. Build + deploy"]
-    S8 --> S9["9. Verify live app"]
+    S2 --> S3["3. Web App: Basics"]
+    S3 --> S4["4. Deployment tab: GitHub CI/CD"]
+    S4 --> S5["5. Review + create"]
+    S5 --> S6["6-8. Key, startup command, web sockets"]
+    S6 --> S9["9. Build + deploy"]
+    S9 --> S10["10. Verify live app"]
 ```
 
 **Prerequisites:** Python 3.11+, Git, VS Code, a GitHub account, an Azure account, an [OpenAI API key](https://platform.openai.com/api-keys).
@@ -318,32 +319,98 @@ Open http://localhost:8501 → upload `data/sample_pdfs/6_financial-policies-and
 flowchart LR
     DEV["💻 Developer"] -- "git push main" --> GH["🐙 GitHub Repo"]
     GH -- "triggers" --> GA["⚙️ GitHub Actions<br/>build + deploy"]
-    GA -- "deploys code" --> AZ["☁️ Azure Web App<br/>Linux · Python 3.11"]
+    GA -- "deploys code" --> AZ["☁️ Azure Web App<br/>Linux · Python 3.13"]
     AZ -- "pip install -r requirements.txt<br/>(Oryx build)" --> AZ
     AZ -- "API calls" --> OAI["🤖 OpenAI API"]
     USR(["👤 Users"]) -- "https://&lt;app&gt;.azurewebsites.net" --> AZ
     KEY["🔑 App Settings<br/>OPENAI_API_KEY"] -.-> AZ
 ```
 
+> 📸 Screenshots for each step live in [`docs/images/`](docs/images/).
+
 > **Before you start:** GitHub Actions must be available on your account (no billing lock, or the repo is public).
 
-#### Step 3: Create the Web App
+#### Step 3: Create the Web App: **Basics** tab
 
-[portal.azure.com](https://portal.azure.com) → **Create a resource → Web App** → **Basics** tab:
+[portal.azure.com](https://portal.azure.com) → **Create a resource → Web App**. The wizard has 7 tabs: **Basics · Database · Deployment · Networking · Monitor + secure · Tags · Review + create**.
+
+**Project Details**
 
 | Field | Value |
 |---|---|
-| Resource Group | Create new, e.g. `rg-financial-policy-bot` |
-| Name | Unique name, e.g. `financial-policy-chatbot` (becomes the URL) |
-| Publish | Code |
-| Runtime stack | Python 3.11 |
+| Subscription | your subscription (e.g. `Subscription 1`) |
+| Resource Group | select one or **Create new**, e.g. `myfirstresourcegroup1` |
+
+**Instance Details**
+
+| Field | Value |
+|---|---|
+| Name | e.g. `myfirstapp`. With *Secure unique default hostname* on, Azure adds a random suffix, so the URL looks like `myfirstapp-<random>.westus3-01.azurewebsites.net` |
+| Publish | **Code** |
+| Runtime stack | **Python 3.13** (same version as local) |
 | Operating System | **Linux** |
-| Region | Central India (or nearest) |
-| Pricing plan | **Basic B1** (Free F1 is too slow for ChromaDB) |
+| Region | e.g. **West US 3**. If your plan isn't listed, try another region |
 
-Click **Review + create → Create**, then **Go to resource**.
+**Pricing plans**
 
-#### Step 4: Add environment variables
+| Field | Value |
+|---|---|
+| Linux Plan | **(New)** plan, created automatically (e.g. `ASP-myfirstresourcegroup1-xxxx`) |
+| Pricing plan | **Basic B1** (1.75 GB memory, 1 vCPU), about **12.41 USD/month**. Free F1 is too slow for ChromaDB |
+| Zone redundancy | **Disabled** (Enabled needs at least 2 instances and costs more) |
+| Managed Instance | leave off |
+
+![Azure Web App - Basics tab](docs/images/03-basics-tab.png)
+
+Click **Next: Database**. The **Database** tab is not needed (we use ChromaDB inside the app), so click **Next: Deployment**.
+
+#### Step 4: **Deployment** tab: connect GitHub (CI/CD)
+
+**Continuous deployment settings**
+
+| Field | Value |
+|---|---|
+| Continuous deployment | **Enable** |
+| GitHub account | click **Authorize** and sign in (e.g. `ajeetuk`) |
+| Organization | your GitHub account (e.g. `ajeetuk`) |
+| Repository | `Project_1_Financial_Policy_ChatBot_Rag_Implementation` |
+| Branch | `main` |
+
+![Azure Web App - Deployment tab](docs/images/04-deployment-tab.png)
+
+Optionally click **Preview file** to see the GitHub Actions workflow Azure will add to your repo.
+
+**Authentication settings**
+
+| Field | Value |
+|---|---|
+| Basic authentication | **Disable** (default, more secure). Azure deploys with a managed identity instead |
+
+> Your GitHub account must have **write access** to the repo, because Azure commits a workflow file to `.github/workflows/`. From now on, every push to `main` deploys automatically.
+
+#### Step 5: Networking, Monitor + secure, Tags → Review + create
+
+| Tab | Setting | Value |
+|---|---|---|
+| Networking | Enable public access | **On** (so anyone can open the app) |
+| Networking | Enable virtual network integration | **Off** |
+| Monitor + secure | Enable Application Insights | **No** (optional, billed separately) |
+| Monitor + secure | Enable Defender for App Service | leave off (optional, billed separately) |
+| Tags | Name / Value | optional, e.g. `project = financial-policy-bot` |
+
+![Azure Web App - Networking tab](docs/images/05-networking-tab.png)
+
+On **Review + create**, check the summary: **Basic (B1)**, **Python 3.13**, **Linux**, **Continuous deployment: Enabled**, your repo and branch `main`.
+
+![Azure Web App - Review + create](docs/images/05-review-create.png)
+
+> The warning *"Basic authentication for this app is currently disabled and may impact deployments"* is expected. The GitHub Actions workflow uses a managed identity, so deployment still works.
+
+Click **Create**, wait for *"Your deployment is complete"*, then **Go to resource**.
+
+> Azure starts the first GitHub Actions deployment immediately. The app won't start correctly until you finish Steps 6–8, and that's fine: saving those settings restarts the app.
+
+#### Step 6: Add environment variables
 
 **Settings → Environment variables → App settings → + Add**
 
@@ -352,9 +419,11 @@ Click **Review + create → Create**, then **Go to resource**.
 | `OPENAI_API_KEY` | your OpenAI API key |
 | `SCM_DO_BUILD_DURING_DEPLOYMENT` | `true` |
 
+![Environment variables](docs/images/06-environment-variables.png)
+
 Click **Apply** and confirm the restart.
 
-#### Step 5: Set the startup command
+#### Step 7: Set the startup command
 
 **Settings → Configuration → General settings → Startup Command:**
 
@@ -362,29 +431,21 @@ Click **Apply** and confirm the restart.
 python -m streamlit run app.py --server.port 8000 --server.address 0.0.0.0 --server.headless true
 ```
 
-#### Step 6: Turn on web sockets
+![Startup command](docs/images/07-startup-command.png)
+
+#### Step 8: Turn on web sockets
 
 On the same **General settings** page, set **Web sockets** to **On** (Streamlit needs it, otherwise the page stays blank). Click **Save → Continue**.
 
-#### Step 7: Connect GitHub (CI/CD)
+![Web sockets On](docs/images/08-web-sockets.png)
 
-**Deployment → Deployment Center**
+#### Step 9: Watch the build and deploy
 
-| Field | Value |
-|---|---|
-| Source | GitHub (click **Authorize** and sign in) |
-| Organization | your GitHub account |
-| Repository | this repository |
-| Branch | `main` |
-| Authentication | User-assigned identity (default) |
+Open the **Actions** tab on GitHub (or **Deployment Center → Logs** in Azure). Wait for both **build** and **deploy** jobs to turn green (about 5–10 minutes; `chromadb` is large). If the first run finished before Step 6, click **Re-run all jobs** so the build installs the requirements.
 
-Click **Save**. Azure adds a workflow under `.github/workflows/` and starts the first deployment. From now on, every push to `main` redeploys automatically.
+![GitHub Actions build and deploy](docs/images/09-github-actions.png)
 
-#### Step 8: Watch the build and deploy
-
-Open the **Actions** tab on GitHub (or **Logs** in Deployment Center). Wait for both **build** and **deploy** jobs to turn green (about 5–10 minutes; `chromadb` is large).
-
-#### Step 9: Verify the live app
+#### Step 10: Verify the live app
 
 1. Azure Portal → **Overview** → click **Default domain** (`https://<app-name>.azurewebsites.net`).
 2. Upload the sample PDF → **Ingest/Process Document** → ask:
@@ -392,6 +453,8 @@ Open the **Actions** tab on GitHub (or **Logs** in Deployment Center). Wait for 
    - *Who are the current authorised bank signatories?*
    - *What's the capital of France?* (should politely decline: not in the document)
 3. Open **Monitoring → Log stream** to see the app running.
+
+![Live app on Azure](docs/images/10-live-app.png)
 
 > 💡 `db/` isn't stored in Git, so process the document once after each fresh deployment.
 >
@@ -446,10 +509,11 @@ Check **Monitoring → Log stream** first.
 
 | Symptom | Fix |
 |---|---|
-| "Application Error" / container keeps restarting | Check the startup command (Step 5) |
-| Page loads but stays blank or keeps reconnecting | Turn **Web sockets** On (Step 6) |
+| "Application Error" / container keeps restarting | Check the startup command (Step 7) |
+| Page loads but stays blank or keeps reconnecting | Turn **Web sockets** On (Step 8) |
 | `ModuleNotFoundError` | Set `SCM_DO_BUILD_DURING_DEPLOYMENT=true` and redeploy |
 | OpenAI authentication error | Check the `OPENAI_API_KEY` app setting |
+| Deploy job fails with an authentication / publish-profile error | Web App → **Settings → Configuration → General settings** → turn **SCM Basic Auth Publishing Credentials** On, then re-run the workflow |
 | GitHub job "not started … billing issue" | Fix billing in GitHub **Settings → Billing**, or make the repo public |
 
 ---
