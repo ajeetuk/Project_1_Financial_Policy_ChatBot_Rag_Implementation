@@ -25,9 +25,8 @@
 - [Design Decisions](#-design-decisions)
 - [Tech Stack](#-tech-stack)
 - [Project Structure](#-project-structure)
-- [Getting Started](#-getting-started)
+- [Step-by-Step Guide: Clone → Branch → PR → Deploy](#-step-by-step-guide-clone--branch--pull-request--deploy)
 - [Configuration](#️-configuration)
-- [Deploy to Azure Web App](#️-deploy-to-azure-web-app-azure-portal)
 - [Troubleshooting](#-troubleshooting)
 - [Limitations & Roadmap](#-limitations--roadmap)
 
@@ -243,6 +242,8 @@ Project_1_Financial_Policy_ChatBot_Rag_Implementation/
 ├── Project_Preparation/
 │   └── README.md               # Business case and planning notes
 ├── project_templates.py        # Scaffolds the folder structure
+├── .github/
+│   └── pull_request_template.md  # Auto-fills every PR description
 ├── requirements.txt
 ├── setup.py
 └── .gitignore                  # Excludes .env, venv/, db/
@@ -250,50 +251,53 @@ Project_1_Financial_Policy_ChatBot_Rag_Implementation/
 
 ---
 
-## 🚀 Getting Started
+## 🚀 Step-by-Step Guide: Clone → Branch → Pull Request → Deploy
 
-### Prerequisites
+Follow these steps in order. Each step is numbered so you can follow along with the video.
 
-- Python **3.11+**
-- An [OpenAI API key](https://platform.openai.com/api-keys)
-- [uv](https://docs.astral.sh/uv/) (optional, for faster installs)
+```mermaid
+flowchart LR
+    S1["1. Clone"] --> S2["2. Set up + run locally"]
+    S2 --> S3["3. Create feature branch"]
+    S3 --> S4["4. Make a one-line change"]
+    S4 --> S5["5. Commit + push branch"]
+    S5 --> S6["6. Open pull request"]
+    S6 --> S7["7. Review + approve"]
+    S7 --> S8["8. Merge to main"]
+    S8 --> S9["9-14. Deploy to Azure Web App"]
+    S9 --> S15["15. Verify live app"]
+```
 
-### 1. Clone the repository
+**Prerequisites:** Python 3.11+, Git, VS Code, a GitHub account, an Azure account, an [OpenAI API key](https://platform.openai.com/api-keys).
+
+---
+
+### Part A: Get the code running locally
+
+#### Step 1: Clone the repository
 
 ```bash
 git clone https://github.com/ajeetuk/Project_1_Financial_Policy_ChatBot_Rag_Implementation.git
 cd Project_1_Financial_Policy_ChatBot_Rag_Implementation
+code .
 ```
 
-### 2. Create and activate a virtual environment
+#### Step 2: Set up and run locally
 
 ```bash
+# Create and activate a virtual environment
 python -m venv venv
-
-# macOS / Linux
-source venv/bin/activate
-
-# Windows (PowerShell)
-.\venv\Scripts\Activate.ps1
 
 # Windows (Command Prompt)
 venv\Scripts\activate.bat
+# Windows (PowerShell)
+.\venv\Scripts\Activate.ps1
+# macOS / Linux
+source venv/bin/activate
+
+# Install dependencies
+python -m pip install -r requirements.txt     # or: uv pip install -r requirements.txt
 ```
-
-You'll see `(venv)` at the start of your prompt when it's active.
-
-### 3. Install dependencies
-
-With the virtual environment **active**:
-
-```bash
-uv pip install -r requirements.txt
-
-# or, without uv
-python -m pip install -r requirements.txt
-```
-
-### 4. Add your OpenAI API key
 
 Create a `.env` file in the project root:
 
@@ -303,23 +307,190 @@ OPENAI_API_KEY=sk-your-key-here
 
 > 🔒 `.env` is in `.gitignore`, so your key is never pushed to GitHub.
 
-### 5. Run the app
+Run the app:
 
 ```bash
 python -m streamlit run app.py
 ```
 
-Open **http://localhost:8501**, then:
+Open http://localhost:8501 → upload `data/sample_pdfs/6_financial-policies-and-procedures_2022.pdf` → click **Ingest/Process Document** → ask a question. Stop with `Ctrl+C`.
 
-1. **Upload** a financial policy PDF (sample: `data/sample_pdfs/6_financial-policies-and-procedures_2022.pdf`)
-2. Click **Ingest/Process Document**
-3. **Ask a question**, for example:
-   - *What is the main purpose of the Financial Policy and Procedures manual?*
-   - *What types of bank accounts does Integrity Action maintain?*
+---
+
+### Part B: Ship a change with a feature branch and pull request
+
+#### Step 3: Create a feature branch
+
+Never commit directly to `main`. `main` is what gets deployed.
+
+```bash
+git checkout main
+git pull origin main
+git checkout -b feature/update-app-title
+git branch                     # the * shows your current branch
+```
+
+#### Step 4: Make a one-line change
+
+Open `app.py` and change **line 12**, the page title:
+
+```python
+# Before
+st.title("Financial Policy Assistant Chatbot")
+
+# After
+st.title("Financial Policy Assistant Chatbot v1.1")
+```
+
+That's the whole change: one word added. It is safe, and it is **visible in the live app**, so after deployment you can confirm this exact change reached Azure.
+
+Optional local check: `python -m streamlit run app.py` → the title now ends with **v1.1**.
+
+#### Step 5: Commit and push the feature branch
+
+```bash
+git status                     # only app.py should be listed (.env must NOT appear)
+git add app.py
+git commit -m "Update app title to v1.1"
+git push -u origin feature/update-app-title
+```
+
+#### Step 6: Open a pull request
+
+On the GitHub repo page, click **Compare & pull request** (yellow banner), or go to **Pull requests → New pull request**.
+
+| Field | Value |
+|---|---|
+| base | `main` |
+| compare | `feature/update-app-title` |
+| Title | `Update app title to v1.1` |
+
+**Description:** this repo includes a pull request template (`.github/pull_request_template.md`), so the description box fills in automatically. Complete it like this:
+
+```markdown
+## What changed
+Updated the Streamlit page title in `app.py` to "Financial Policy Assistant Chatbot v1.1".
+
+## Why
+Marks the release version so we can confirm the deployment on Azure.
+
+## How it was tested
+- [x] Ran locally with `python -m streamlit run app.py`
+- [x] Title shows "v1.1"; upload, ingest and Q&A still work
+
+## Checklist
+- [x] No secrets committed (`.env` not included)
+- [x] Change is small and focused
+```
+
+Click **Create pull request**.
+
+#### Step 7: Review and approve
+
+1. Open the **Files changed** tab and check the diff (red = removed, green = added).
+2. Click **Review changes** → select **Approve** → **Submit review**.
+
+> ℹ️ GitHub does **not** let you approve your own pull request. To show a real approval, add a second GitHub account as a collaborator (**Settings → Collaborators → Add people**), accept the invite, and approve from that account. On a solo repo you can skip the approval and merge after reviewing the diff.
+
+#### Step 8: Merge to main and sync
+
+On the **Conversation** tab: **Merge pull request** → **Confirm merge** → **Delete branch**.
+
+Then update your local copy:
+
+```bash
+git checkout main
+git pull origin main
+git log --oneline -3           # the merge commit is on top
+```
+
+---
+
+### Part C: Deploy to Azure Web App (Azure Portal)
+
+```mermaid
+flowchart LR
+    DEV["💻 Developer"] -- "merge to main" --> GH["🐙 GitHub Repo"]
+    GH -- "triggers" --> GA["⚙️ GitHub Actions<br/>build + deploy"]
+    GA -- "deploys code" --> AZ["☁️ Azure Web App<br/>Linux · Python 3.11"]
+    AZ -- "pip install -r requirements.txt<br/>(Oryx build)" --> AZ
+    AZ -- "API calls" --> OAI["🤖 OpenAI API"]
+    USR(["👤 Users"]) -- "https://&lt;app&gt;.azurewebsites.net" --> AZ
+    KEY["🔑 App Settings<br/>OPENAI_API_KEY"] -.-> AZ
+```
+
+> **Before you start:** GitHub Actions must be available on your account (no billing lock, or the repo is public).
+
+#### Step 9: Create the Web App
+
+[portal.azure.com](https://portal.azure.com) → **Create a resource → Web App** → **Basics** tab:
+
+| Field | Value |
+|---|---|
+| Resource Group | Create new, e.g. `rg-financial-policy-bot` |
+| Name | Unique name, e.g. `financial-policy-chatbot` (becomes the URL) |
+| Publish | Code |
+| Runtime stack | Python 3.11 |
+| Operating System | **Linux** |
+| Region | Central India (or nearest) |
+| Pricing plan | **Basic B1** (Free F1 is too slow for ChromaDB) |
+
+Click **Review + create → Create**, then **Go to resource**.
+
+#### Step 10: Add environment variables
+
+**Settings → Environment variables → App settings → + Add**
+
+| Name | Value |
+|---|---|
+| `OPENAI_API_KEY` | your OpenAI API key |
+| `SCM_DO_BUILD_DURING_DEPLOYMENT` | `true` |
+
+Click **Apply** and confirm the restart.
+
+#### Step 11: Set the startup command
+
+**Settings → Configuration → General settings → Startup Command:**
+
+```bash
+python -m streamlit run app.py --server.port 8000 --server.address 0.0.0.0 --server.headless true
+```
+
+#### Step 12: Turn on web sockets
+
+On the same **General settings** page, set **Web sockets** to **On** (Streamlit needs it, otherwise the page stays blank). Click **Save → Continue**.
+
+#### Step 13: Connect GitHub (CI/CD)
+
+**Deployment → Deployment Center**
+
+| Field | Value |
+|---|---|
+| Source | GitHub (click **Authorize** and sign in) |
+| Organization | your GitHub account |
+| Repository | this repository |
+| Branch | `main` |
+| Authentication | User-assigned identity (default) |
+
+Click **Save**. Azure adds a workflow under `.github/workflows/` and starts the first deployment. From now on, every merge to `main` redeploys automatically.
+
+#### Step 14: Watch the build and deploy
+
+Open the **Actions** tab on GitHub (or **Logs** in Deployment Center). Wait for both **build** and **deploy** jobs to turn green (about 5–10 minutes; `chromadb` is large).
+
+#### Step 15: Verify the live app
+
+1. Azure Portal → **Overview** → click **Default domain** (`https://<app-name>.azurewebsites.net`).
+2. Check the title ends with **v1.1**. That's your change from Step 4, now live.
+3. Upload the sample PDF → **Ingest/Process Document** → ask:
    - *What are the quotation requirements based on purchase value?*
    - *Who are the current authorised bank signatories?*
+   - *What's the capital of France?* (should politely decline: not in the document)
+4. Open **Monitoring → Log stream** to see the app running.
 
-Press `Ctrl+C` in the terminal to stop the app.
+> 💡 `db/` isn't stored in Git, so process the document once after each fresh deployment.
+>
+> 💸 **Basic B1 is a paid plan.** If you're only practising, delete the resource group when you're done.
 
 ---
 
@@ -348,87 +519,7 @@ llm:
   temperature: 0
 ```
 
-> ⚠️ If you change the **embedding model** or **chunking settings**, delete the `db/` folder and process the documents again. Vectors from different models can't be mixed.
-
----
-
-## ☁️ Deploy to Azure Web App (Azure Portal)
-
-```mermaid
-flowchart LR
-    DEV["💻 Developer"] -- "git push main" --> GH["🐙 GitHub Repo"]
-    GH -- "triggers" --> GA["⚙️ GitHub Actions<br/>build + deploy"]
-    GA -- "deploys code" --> AZ["☁️ Azure Web App<br/>Linux · Python 3.11"]
-    AZ -- "pip install -r requirements.txt<br/>(Oryx build)" --> AZ
-    AZ -- "API calls" --> OAI["🤖 OpenAI API"]
-    USR(["👤 Users"]) -- "https://&lt;app&gt;.azurewebsites.net" --> AZ
-    KEY["🔑 App Settings<br/>OPENAI_API_KEY"] -.-> AZ
-```
-
-> **Before you start:** your code must be pushed to GitHub, and GitHub Actions must be available on your account (no billing lock, or the repo is public).
-
-### Step 1: Create the Web App
-
-In [portal.azure.com](https://portal.azure.com) → **Create a resource → Web App** → **Basics** tab:
-
-| Field | Value |
-|---|---|
-| Resource Group | Create new, e.g. `rg-financial-policy-bot` |
-| Name | Unique name, e.g. `financial-policy-chatbot` (becomes the URL) |
-| Publish | Code |
-| Runtime stack | Python 3.11 |
-| Operating System | **Linux** |
-| Region | Central India (or nearest) |
-| Pricing plan | **Basic B1** (Free F1 is too slow for ChromaDB) |
-
-Click **Review + create → Create**, then **Go to resource**.
-
-### Step 2: Add environment variables
-
-**Settings → Environment variables → App settings → + Add**
-
-| Name | Value |
-|---|---|
-| `OPENAI_API_KEY` | your OpenAI API key |
-| `SCM_DO_BUILD_DURING_DEPLOYMENT` | `true` |
-
-Click **Apply** and confirm the restart.
-
-### Step 3: Set the startup command and enable web sockets
-
-**Settings → Configuration → General settings**
-
-- **Startup Command:**
-  ```bash
-  python -m streamlit run app.py --server.port 8000 --server.address 0.0.0.0 --server.headless true
-  ```
-- **Web sockets:** **On** (Streamlit needs this, otherwise the page stays blank)
-
-Click **Save → Continue**.
-
-### Step 4: Connect GitHub
-
-**Deployment → Deployment Center**
-
-| Field | Value |
-|---|---|
-| Source | GitHub (click **Authorize** and sign in) |
-| Organization | your GitHub account |
-| Repository | this repository |
-| Branch | `main` |
-| Authentication | User-assigned identity (default) |
-
-Click **Save**. Azure adds a workflow under `.github/workflows/` and starts the first deployment.
-
-### Step 5: Watch the deployment
-
-Open the **Logs** tab in Deployment Center, or the **Actions** tab on GitHub. Wait for the **build** and **deploy** jobs to turn green (about 5–10 minutes; `chromadb` is large).
-
-### Step 6: Open and test
-
-**Overview → Default domain** (`https://<app-name>.azurewebsites.net`). Upload the PDF, click **Ingest/Process Document**, and ask a question.
-
-> 💡 `db/` isn't stored in Git, so process the document once after each fresh deployment.
+> ⚠️ If you change the **embedding model** or **chunking settings**, delete the `db/` folder and process the documents again.
 
 ---
 
@@ -450,8 +541,8 @@ Check **Monitoring → Log stream** first.
 
 | Symptom | Fix |
 |---|---|
-| "Application Error" / container keeps restarting | Check the startup command (Step 3) |
-| Page loads but stays blank or keeps reconnecting | Turn **Web sockets** On |
+| "Application Error" / container keeps restarting | Check the startup command (Step 11) |
+| Page loads but stays blank or keeps reconnecting | Turn **Web sockets** On (Step 12) |
 | `ModuleNotFoundError` | Set `SCM_DO_BUILD_DURING_DEPLOYMENT=true` and redeploy |
 | OpenAI authentication error | Check the `OPENAI_API_KEY` app setting |
 | GitHub job "not started … billing issue" | Fix billing in GitHub **Settings → Billing**, or make the repo public |
