@@ -1,43 +1,275 @@
+<div align="center">
+
 # 📑 Financial Policy Document Assistant
 
-A Streamlit chatbot that answers questions about financial policy and compliance documents using **RAG (Retrieval-Augmented Generation)**. Upload a policy PDF, process it once, then ask questions in plain English. Answers come only from the document, with page citations.
+**A GenAI chatbot that answers financial policy and compliance questions strictly from your documents, with page citations.**
 
-**Tech stack:** Python · LangChain · OpenAI (embeddings + chat model) · ChromaDB · PyMuPDF · Streamlit
+![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
+![LangChain](https://img.shields.io/badge/LangChain-RAG-1C3C3C?logo=langchain&logoColor=white)
+![OpenAI](https://img.shields.io/badge/OpenAI-GPT%20%2B%20Embeddings-412991?logo=openai&logoColor=white)
+![ChromaDB](https://img.shields.io/badge/ChromaDB-Vector%20Store-FF6F00)
+![Streamlit](https://img.shields.io/badge/Streamlit-UI-FF4B4B?logo=streamlit&logoColor=white)
+![Azure](https://img.shields.io/badge/Azure-Web%20App-0078D4?logo=microsoftazure&logoColor=white)
 
----
-
-## How It Works
-
-```
-PDF ─► Load (PyMuPDF) ─► Chunk ─► Embed (OpenAI) ─► Store (ChromaDB)
-                                                         │
-Question ─► Retrieve relevant chunks ◄───────────────────┘
-               │
-               ▼
-        Prompt + context ─► LLM (OpenAI) ─► Answer with page citations
-```
+</div>
 
 ---
 
-## Prerequisites
+## 📌 Table of Contents
 
-- Python 3.11+
+- [Business Problem](#-business-problem)
+- [Solution Overview](#-solution-overview)
+- [System Architecture](#️-system-architecture)
+- [How It Works](#-how-it-works)
+- [Module Design](#-module-design)
+- [Design Decisions](#-design-decisions)
+- [Tech Stack](#-tech-stack)
+- [Project Structure](#-project-structure)
+- [Getting Started](#-getting-started)
+- [Configuration](#️-configuration)
+- [Deploy to Azure Web App](#️-deploy-to-azure-web-app-azure-portal)
+- [Troubleshooting](#-troubleshooting)
+- [Limitations & Roadmap](#-limitations--roadmap)
+
+---
+
+## 💼 Business Problem
+
+Banks, insurers and financial institutions work with **thousands of pages** of compliance manuals, regulatory filings and internal policies (Basel III, IFRS, RBI circulars, procurement rules, approval limits).
+
+| Pain point | Impact |
+|---|---|
+| Manual searching through long PDFs | Slow, error-prone, wastes staff time |
+| Misreading a threshold or approval level | Compliance breaches, fines, audit findings |
+| Non-technical staff need answers fast | Audits, onboarding and reporting are time-critical |
+| Generic chatbots hallucinate | Unacceptable in a regulated domain |
+
+## ✅ Solution Overview
+
+An assistant that **ingests policy PDFs**, indexes them as vector embeddings, and answers questions using **Retrieval-Augmented Generation (RAG)**:
+
+- 🔍 **Grounded answers:** the LLM only sees the most relevant passages from your documents
+- 📄 **Citations:** every answer references the source file and page number
+- 🚫 **No guessing:** if the document doesn't cover it, the assistant says so
+- 💬 **Plain English:** anyone can ask questions; no search skills needed
+
+---
+
+## 🏗️ System Architecture
+
+```mermaid
+flowchart LR
+    U(["👤 User"]) <--> UI["🖥️ Streamlit UI<br/>app.py"]
+
+    subgraph Ingestion["📥 Ingestion Pipeline (run once per document)"]
+        direction TB
+        L["📄 Load PDF<br/>PyMuPDF"] --> C["✂️ Chunk<br/>RecursiveCharacterTextSplitter"]
+        C --> E1["🔢 Embed chunks<br/>OpenAI Embeddings"]
+    end
+
+    subgraph Query["💬 Query Pipeline (every question)"]
+        direction TB
+        E2["🔢 Embed question<br/>OpenAI Embeddings"] --> R["🔍 Retrieve top-k chunks<br/>Similarity search"]
+        R --> P["📝 Build prompt<br/>System rules + context"]
+        P --> LLM["🤖 Generate answer<br/>OpenAI Chat Model"]
+    end
+
+    UI -- "Upload + Process" --> L
+    E1 --> VDB[("🗄️ ChromaDB<br/>db/")]
+    UI -- "Question" --> E2
+    VDB --> R
+    LLM -- "Answer + page citations" --> UI
+```
+
+---
+
+## 🔄 How It Works
+
+### 1. Ingestion: turning a PDF into searchable vectors
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User
+    participant UI as Streamlit UI
+    participant RAG as rag_pipeline.py
+    participant Loader as PyMuPDF Loader
+    participant Splitter as Text Splitter
+    participant OpenAI as OpenAI Embeddings
+    participant DB as ChromaDB
+
+    User->>UI: Upload PDF + click "Ingest/Process"
+    UI->>UI: Save file to data/sample_pdfs/
+    UI->>RAG: indexing_pipeline(file_path)
+    RAG->>Loader: load_documents()
+    Loader-->>RAG: Pages (text + page metadata)
+    RAG->>Splitter: chunk_documents()
+    Splitter-->>RAG: Chunks (1000 chars, 200 overlap)
+    RAG->>OpenAI: Embed each chunk
+    OpenAI-->>RAG: Vectors
+    RAG->>DB: Store vectors + text + metadata
+    DB-->>UI: Indexed ✅
+    UI-->>User: "Document processed successfully"
+```
+
+### 2. Question answering: retrieve, then generate
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User
+    participant UI as Streamlit UI
+    participant RAG as rag_pipeline.py
+    participant DB as ChromaDB
+    participant OpenAI as OpenAI Embeddings
+    participant LLM as OpenAI Chat Model
+
+    User->>UI: Ask a question
+    UI->>RAG: get_answer(question)
+    RAG->>OpenAI: Embed the question
+    OpenAI-->>RAG: Question vector
+    RAG->>DB: Similarity search (top 10)
+    DB-->>RAG: Most relevant chunks + page numbers
+    RAG->>RAG: Build prompt (system rules + context + question)
+    RAG->>LLM: Invoke (temperature 0)
+    LLM-->>RAG: Grounded answer with citations
+    RAG-->>UI: Answer
+    UI-->>User: Display answer
+```
+
+### Example
+
+> **Q:** What are the quotation requirements based on purchase value?
+>
+> **A:** The assistant retrieves the procurement section of the policy and returns the purchase-value thresholds and the number of quotations each one requires, citing the source file and page.
+
+---
+
+## 🧩 Module Design
+
+Each RAG step lives in its own module, so any component (loader, embedding model, vector store, LLM) can be swapped without touching the rest.
+
+```mermaid
+flowchart TD
+    APP["app.py<br/><i>Streamlit UI</i>"] --> PIPE["src/rag_pipeline.py<br/><i>indexing_pipeline() · get_answer()</i>"]
+
+    PIPE --> DL["src/document_loaders.py<br/><i>PDF → pages</i>"]
+    PIPE --> CH["src/chunking.py<br/><i>pages → chunks</i>"]
+    PIPE --> EM["src/embeddings.py<br/><i>OpenAI embedding model</i>"]
+    PIPE --> VS["src/vectorstore.py<br/><i>create · load · retriever</i>"]
+    PIPE --> LLM["src/llm_integration.py<br/><i>OpenAI chat model</i>"]
+    PIPE --> PR["prompts/prompt_template.py<br/><i>system prompt + messages</i>"]
+
+    CH --> CFG["src/config_loader.py"]
+    EM --> CFG
+    VS --> CFG
+    LLM --> CFG
+    CFG --> YAML[("config/config.yaml")]
+
+    classDef ui fill:#FF4B4B,color:#fff,stroke:#c33
+    classDef core fill:#1C3C3C,color:#fff,stroke:#000
+    classDef cfg fill:#f4f4f4,stroke:#999
+    class APP ui
+    class PIPE core
+    class CFG,YAML cfg
+```
+
+| Module | Responsibility | Key function |
+|---|---|---|
+| `app.py` | Upload, ingest and Q&A interface | Streamlit page |
+| `src/rag_pipeline.py` | Orchestrates both pipelines | `indexing_pipeline()`, `get_answer()` |
+| `src/document_loaders.py` | Reads PDF pages with metadata | `load_documents()` |
+| `src/chunking.py` | Splits pages into overlapping chunks | `chunk_documents()` |
+| `src/embeddings.py` | Creates the embedding model | `get_embedding_model()` |
+| `src/vectorstore.py` | Creates, loads and queries ChromaDB | `create_vector_store()`, `get_retriever()` |
+| `src/llm_integration.py` | Creates the chat model | `get_llm_model()` |
+| `prompts/prompt_template.py` | Grounding rules + message builder | `build_prompt()` |
+| `src/config_loader.py` | Loads settings once (cached) | `load_config()` |
+
+---
+
+## 🧠 Design Decisions
+
+| Decision | Choice | Why |
+|---|---|---|
+| **PDF loader** | PyMuPDF | Fast, accurate text extraction, keeps page numbers for citations |
+| **Chunking** | Recursive splitter, 1000 chars / 200 overlap | Breaks on paragraph → line → sentence → word, so clauses stay intact; overlap prevents losing context at chunk edges |
+| **Embeddings** | OpenAI `text-embedding-ada-002` | Strong semantic search quality, no model hosting needed |
+| **Vector store** | ChromaDB (persisted to `db/`) | Lightweight, runs locally, no extra infrastructure for a POC |
+| **Retrieval** | Similarity search, top 10 | Policy answers often span several sections; 10 chunks gives enough coverage |
+| **LLM** | OpenAI chat model, temperature 0 | Deterministic, factual answers suited to compliance |
+| **Grounding** | Strict system prompt | Answer only from context, quote figures exactly, cite pages, say "not covered" instead of guessing |
+| **Configuration** | `config/config.yaml` | Change models or retrieval settings without editing code |
+
+---
+
+## 🛠️ Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Frontend | Streamlit |
+| Orchestration | LangChain (`langchain-core`, `langchain-community`, `langchain-text-splitters`, `langchain-openai`) |
+| Document loading | PyMuPDF |
+| Embeddings | OpenAI Embeddings |
+| Vector database | ChromaDB |
+| LLM | OpenAI Chat Completions |
+| Config / secrets | YAML + `python-dotenv` |
+| Hosting | Azure Web App (Linux, Python) via GitHub Actions |
+
+---
+
+## 📁 Project Structure
+
+```
+Project_1_Financial_Policy_ChatBot_Rag_Implementation/
+├── app.py                      # Streamlit UI: upload, ingest, Q&A
+├── src/
+│   ├── __init__.py
+│   ├── config_loader.py        # Reads config/config.yaml (cached)
+│   ├── document_loaders.py     # PDF → pages (PyMuPDF)
+│   ├── chunking.py             # Pages → overlapping chunks
+│   ├── embeddings.py           # OpenAI embedding model
+│   ├── vectorstore.py          # ChromaDB create / load / retriever
+│   ├── llm_integration.py      # OpenAI chat model
+│   └── rag_pipeline.py         # indexing_pipeline() + get_answer()
+├── prompts/
+│   └── prompt_template.py      # System prompt + message builder
+├── config/
+│   └── config.yaml             # Models, chunking and retriever settings
+├── data/
+│   └── sample_pdfs/            # Uploaded / sample policy PDFs
+├── exploration/
+│   └── notebook.ipynb          # Step-by-step RAG prototype
+├── Project_Preparation/
+│   └── README.md               # Business case and planning notes
+├── project_templates.py        # Scaffolds the folder structure
+├── requirements.txt
+├── setup.py
+└── .gitignore                  # Excludes .env, venv/, db/
+```
+
+---
+
+## 🚀 Getting Started
+
+### Prerequisites
+
+- Python **3.11+**
 - An [OpenAI API key](https://platform.openai.com/api-keys)
 - [uv](https://docs.astral.sh/uv/) (optional, for faster installs)
 
----
+### 1. Clone the repository
 
-## Setup
+```bash
+git clone https://github.com/ajeetuk/Project_1_Financial_Policy_ChatBot_Rag_Implementation.git
+cd Project_1_Financial_Policy_ChatBot_Rag_Implementation
+```
 
-### 1. Create a virtual environment
+### 2. Create and activate a virtual environment
 
 ```bash
 python -m venv venv
-```
 
-### 2. Activate the virtual environment
-
-```bash
 # macOS / Linux
 source venv/bin/activate
 
@@ -48,11 +280,11 @@ source venv/bin/activate
 venv\Scripts\activate.bat
 ```
 
-You'll see `(venv)` at the start of your terminal prompt when it's active.
+You'll see `(venv)` at the start of your prompt when it's active.
 
 ### 3. Install dependencies
 
-Make sure the virtual environment is **active** before installing, so packages go into `venv` and not your system Python.
+With the virtual environment **active**:
 
 ```bash
 uv pip install -r requirements.txt
@@ -61,62 +293,97 @@ uv pip install -r requirements.txt
 python -m pip install -r requirements.txt
 ```
 
-When you add a new package, list it in `requirements.txt` and run the install command again.
-
 ### 4. Add your OpenAI API key
 
-Create a `.env` file in the project root (copy `.env.example`):
+Create a `.env` file in the project root:
 
-```
+```env
 OPENAI_API_KEY=sk-your-key-here
 ```
 
-`.env` is listed in `.gitignore`, so your key is never pushed to GitHub.
+> 🔒 `.env` is in `.gitignore`, so your key is never pushed to GitHub.
 
----
-
-## Run the App
+### 5. Run the app
 
 ```bash
 python -m streamlit run app.py
 ```
 
-Open http://localhost:8501, then:
+Open **http://localhost:8501**, then:
 
-1. **Upload** a financial policy PDF (a sample is in `data/sample_pdfs/`)
+1. **Upload** a financial policy PDF (sample: `data/sample_pdfs/6_financial-policies-and-procedures_2022.pdf`)
 2. Click **Ingest/Process Document**
 3. **Ask a question**, for example:
-   - What is the main purpose of the Financial Policy and Procedures manual?
-   - What are the quotation requirements based on purchase value?
-   - Who are the current authorised bank signatories?
+   - *What is the main purpose of the Financial Policy and Procedures manual?*
+   - *What types of bank accounts does Integrity Action maintain?*
+   - *What are the quotation requirements based on purchase value?*
+   - *Who are the current authorised bank signatories?*
 
-To stop the app, press `Ctrl+C` in the terminal.
+Press `Ctrl+C` in the terminal to stop the app.
 
 ---
 
-## Deploy to Azure Web App (Azure Portal)
+## ⚙️ Configuration
 
-The app is deployed from the Azure Portal, with GitHub as the source. Every push to `main` redeploys automatically.
+All tunable settings live in [`config/config.yaml`](config/config.yaml):
 
-> **Before you start:** make sure your code is pushed to GitHub (`app.py`, `src/`, `requirements.txt` visible in the repo) and that GitHub Actions is available on your account (no billing lock, or the repo is public).
+```yaml
+chunking:
+  chunk_size: 1000
+  chunk_overlap: 200
+  separators: ["\n\n", "\n", ".", " ", ""]
 
-### 1. Create the Web App
+embeddings:
+  model: text-embedding-ada-002
 
-In [portal.azure.com](https://portal.azure.com), go to **Create a resource → Web App** and fill in the **Basics** tab:
+vector_store:
+  persist_directory: db
+
+retriever:
+  search_type: similarity
+  k: 10
+
+llm:
+  model_name: gpt-5.4-mini-2026-03-17
+  temperature: 0
+```
+
+> ⚠️ If you change the **embedding model** or **chunking settings**, delete the `db/` folder and process the documents again. Vectors from different models can't be mixed.
+
+---
+
+## ☁️ Deploy to Azure Web App (Azure Portal)
+
+```mermaid
+flowchart LR
+    DEV["💻 Developer"] -- "git push main" --> GH["🐙 GitHub Repo"]
+    GH -- "triggers" --> GA["⚙️ GitHub Actions<br/>build + deploy"]
+    GA -- "deploys code" --> AZ["☁️ Azure Web App<br/>Linux · Python 3.11"]
+    AZ -- "pip install -r requirements.txt<br/>(Oryx build)" --> AZ
+    AZ -- "API calls" --> OAI["🤖 OpenAI API"]
+    USR(["👤 Users"]) -- "https://&lt;app&gt;.azurewebsites.net" --> AZ
+    KEY["🔑 App Settings<br/>OPENAI_API_KEY"] -.-> AZ
+```
+
+> **Before you start:** your code must be pushed to GitHub, and GitHub Actions must be available on your account (no billing lock, or the repo is public).
+
+### Step 1: Create the Web App
+
+In [portal.azure.com](https://portal.azure.com) → **Create a resource → Web App** → **Basics** tab:
 
 | Field | Value |
 |---|---|
 | Resource Group | Create new, e.g. `rg-financial-policy-bot` |
-| Name | A unique name, e.g. `financial-policy-chatbot` (becomes the URL) |
+| Name | Unique name, e.g. `financial-policy-chatbot` (becomes the URL) |
 | Publish | Code |
 | Runtime stack | Python 3.11 |
 | Operating System | **Linux** |
 | Region | Central India (or nearest) |
 | Pricing plan | **Basic B1** (Free F1 is too slow for ChromaDB) |
 
-Click **Review + create → Create**, wait for *"Your deployment is complete"*, then click **Go to resource**.
+Click **Review + create → Create**, then **Go to resource**.
 
-### 2. Add environment variables
+### Step 2: Add environment variables
 
 **Settings → Environment variables → App settings → + Add**
 
@@ -125,9 +392,9 @@ Click **Review + create → Create**, wait for *"Your deployment is complete"*, 
 | `OPENAI_API_KEY` | your OpenAI API key |
 | `SCM_DO_BUILD_DURING_DEPLOYMENT` | `true` |
 
-Click **Apply**, then confirm the restart.
+Click **Apply** and confirm the restart.
 
-### 3. Set the startup command and enable web sockets
+### Step 3: Set the startup command and enable web sockets
 
 **Settings → Configuration → General settings**
 
@@ -139,7 +406,7 @@ Click **Apply**, then confirm the restart.
 
 Click **Save → Continue**.
 
-### 4. Connect GitHub
+### Step 4: Connect GitHub
 
 **Deployment → Deployment Center**
 
@@ -151,27 +418,39 @@ Click **Save → Continue**.
 | Branch | `main` |
 | Authentication | User-assigned identity (default) |
 
-Click **Save**. Azure adds a workflow file under `.github/workflows/` in your repo and starts the first deployment.
+Click **Save**. Azure adds a workflow under `.github/workflows/` and starts the first deployment.
 
-### 5. Watch the deployment
+### Step 5: Watch the deployment
 
-Open the **Logs** tab in Deployment Center, or the **Actions** tab in your GitHub repo. Wait for the **build** and **deploy** jobs to show green ticks. This takes about 5–10 minutes because `chromadb` is large.
+Open the **Logs** tab in Deployment Center, or the **Actions** tab on GitHub. Wait for the **build** and **deploy** jobs to turn green (about 5–10 minutes; `chromadb` is large).
 
-### 6. Open and test the app
+### Step 6: Open and test
 
-Go to **Overview** and click the **Default domain** link (`https://<app-name>.azurewebsites.net`). The first load can take a minute.
+**Overview → Default domain** (`https://<app-name>.azurewebsites.net`). Upload the PDF, click **Ingest/Process Document**, and ask a question.
 
-Upload the policy PDF, click **Ingest/Process Document**, then ask a question.
+> 💡 `db/` isn't stored in Git, so process the document once after each fresh deployment.
 
-> The `db/` folder is not stored in Git, so process the document once after each fresh deployment.
+---
 
-### Azure troubleshooting
+## 🩺 Troubleshooting
 
-Check **Monitoring → Log stream** for errors.
+### Local (Windows)
+
+| Problem | Fix |
+|---|---|
+| `pip.exe` / `streamlit.exe` blocked by Device Guard | Use `python -m pip ...` and `python -m streamlit run app.py` |
+| `DLL load failed ... Application Control policy` | Windows Smart App Control is blocking a compiled package. Turn it off, or use WSL / GitHub Codespaces |
+| `module 'pymupdf._mupdf' has no attribute ...` | Mixed PyMuPDF install. Close all Python processes, delete `venv\Lib\site-packages\pymupdf`, reinstall `pymupdf==1.28.2` |
+| Duplicate answers after re-processing | Delete `db/` and process each PDF once |
+| `OPENAI_API_KEY` not found | Check that `.env` exists in the project root |
+
+### Azure
+
+Check **Monitoring → Log stream** first.
 
 | Symptom | Fix |
 |---|---|
-| "Application Error" or the container keeps restarting | Check the startup command in step 3 |
+| "Application Error" / container keeps restarting | Check the startup command (Step 3) |
 | Page loads but stays blank or keeps reconnecting | Turn **Web sockets** On |
 | `ModuleNotFoundError` | Set `SCM_DO_BUILD_DURING_DEPLOYMENT=true` and redeploy |
 | OpenAI authentication error | Check the `OPENAI_API_KEY` app setting |
@@ -179,65 +458,25 @@ Check **Monitoring → Log stream** for errors.
 
 ---
 
-## Project Structure
+## 🧭 Limitations & Roadmap
 
-```
-├── app.py                    # Streamlit UI (upload, ingest, Q&A)
-├── src/
-│   ├── config_loader.py      # Reads config/config.yaml
-│   ├── document_loaders.py   # PDF → pages (PyMuPDF)
-│   ├── chunking.py           # Pages → chunks
-│   ├── embeddings.py         # OpenAI embedding model
-│   ├── vectorstore.py        # ChromaDB create / load / retriever
-│   ├── llm_integration.py    # OpenAI chat model
-│   └── rag_pipeline.py       # indexing_pipeline() and get_answer()
-├── prompts/
-│   └── prompt_template.py    # System prompt + message builder
-├── config/
-│   └── config.yaml           # Models, chunk size, retriever settings
-├── data/sample_pdfs/         # Uploaded / sample PDFs
-├── exploration/
-│   └── notebook.ipynb        # Step-by-step RAG notebook
-├── requirements.txt
-└── .env.example
-```
-
----
-
-## Development Workflow
-
-1. **Explore:** build and test each RAG step in `exploration/notebook.ipynb`
-2. **Modularise:** move each step into its own file under `src/`
-3. **Configure:** keep model names and settings in `config/config.yaml`
-4. **Build the UI:** connect the pipeline to the Streamlit app in `app.py`
-
----
-
-## Configuration
-
-Edit `config/config.yaml` to change:
-
-| Setting | Default |
+| Current limitation | Planned improvement |
 |---|---|
-| Chat model | `gpt-5.5`, temperature 0 |
-| Embedding model | `text-embedding-ada-002` |
-| Chunk size / overlap | 1000 / 200 |
-| Retriever | similarity search, top 10 chunks |
-| Vector store folder | `db/` |
-
-If you change the embedding model, delete the `db/` folder and process the documents again.
-
----
-
-## Troubleshooting
-
-| Problem | Fix |
-|---|---|
-| `pip.exe` / `streamlit.exe` blocked on Windows | Use `python -m pip ...` and `python -m streamlit run app.py` |
-| `DLL load failed ... Application Control policy` | Windows Smart App Control is blocking a compiled package. Turn it off, or run the project in WSL / GitHub Codespaces |
-| Duplicate answers after re-processing | Delete the `db/` folder and process the PDF once |
-| `OPENAI_API_KEY not found` | Check that `.env` exists in the project root and contains your key |
+| Re-processing the same PDF adds duplicate chunks | Hash documents and skip ones already indexed |
+| `db/` is lost on redeploy | Azure AI Search or a persistent vector DB |
+| PDFs only | DOCX, CSV, HTML and Confluence loaders |
+| Tables extracted as plain text | Table-aware chunking (`pymupdf4llm` / Unstructured) |
+| Single-turn Q&A | Chat history with follow-up questions |
+| Similarity search only | Hybrid search (keyword + vector) and re-ranking |
+| API key in app settings | Azure Key Vault + Managed Identity |
+| No answer quality tracking | RAG evaluation (faithfulness, relevance) and Azure Monitor logging |
 
 ---
 
-**Author:** Ajeetkumar
+<div align="center">
+
+**Built by Ajeetkumar** · AI Engineer
+
+⭐ If you found this useful, star the repo!
+
+</div>
