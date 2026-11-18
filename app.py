@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Set up the Streamlit app
 st.set_page_config(page_title="Financial Policy Assistant", page_icon=":bank:", layout="centered")
 st.title("Financial Policy Assistant Chatbot")
 st.caption("Answers are grounded only in the uploaded financial policy documents, with page citations.")
