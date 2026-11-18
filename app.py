@@ -2,8 +2,9 @@ import os
 
 import streamlit as st
 
+# Import the necessary functions from the RAG pipeline
 from src.rag_pipeline import indexing_pipeline, get_answer
-
+# Load environment variables from .env file
 from dotenv import load_dotenv
 
 load_dotenv()
